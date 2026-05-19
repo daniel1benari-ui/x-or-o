@@ -272,7 +272,8 @@
             const apiKey = ""; // Canvas handles API key natively
             const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent?key=${apiKey}`;
             
-            const prompt = `אתה מורה מקצועי. צור 15 שאלות רב-ברירה (אמריקאיות) מתוך הטקסט הבא.\nהטקסט:\n"${text}"\n\nהוראות:\n1. כל שאלה חייבת להיות קשורה לטקסט.\n2. עליך לספק 4 אפשרויות תשובה לכל שאלה.\n3. רק אפשרות אחת נכונה.\n4. החזר את התשובה בפורמט JSON בלבד.`;
+            // שיפור משמעותי של הפרומפט כדי לוודא שהשאלות נובעות *רק* מהטקסט, והתאמת הכמות לאורך הטקסט
+            const prompt = `אתה מורה מקצועי. המשימה שלך היא לייצר שאלות רב-ברירה (אמריקאיות) מתוך הטקסט שסופק להלן.\nחשוב מאוד: עליך לבסס את השאלות *אך ורק* על המידע המופיע בטקסט.\nצור בין 4 ל-10 שאלות, בהתאם לאורך הטקסט.\n\nהטקסט:\n"${text}"\n\nהוראות:\n1. ספק 4 אפשרויות תשובה לכל שאלה.\n2. רק אפשרות אחת נכונה.\n3. החזר את התשובה בפורמט JSON נקי.`;
 
             const payload = {
                 contents: [{ role: "user", parts: [{ text: prompt }] }],
@@ -283,7 +284,7 @@
                         items: {
                             type: "OBJECT",
                             properties: {
-                                "question": { type: "STRING", description: "השאלה בעברית" },
+                                "question": { type: "STRING", description: "השאלה בעברית (חייבת להיות מהטקסט)" },
                                 "options": {
                                     type: "ARRAY",
                                     items: { type: "STRING" },
@@ -306,9 +307,14 @@
                 
                 const result = await response.json();
                 if (result.candidates && result.candidates.length > 0) {
-                    const jsonText = result.candidates[0].content.parts[0].text;
+                    let jsonText = result.candidates[0].content.parts[0].text;
+                    // ניקוי סימוני Markdown במקרה שהמודל מחזיר אותם (מה שגורם לקריסה והפעלת שאלות הגיבוי)
+                    jsonText = jsonText.replace(/```json/gi, '').replace(/```/g, '').trim();
+                    
                     const parsedQuestions = JSON.parse(jsonText);
-                    return parsedQuestions;
+                    if (parsedQuestions && parsedQuestions.length > 0) {
+                        return parsedQuestions;
+                    }
                 }
             } catch (error) {
                 console.error("Error generating questions:", error);
